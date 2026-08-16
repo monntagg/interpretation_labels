@@ -1,0 +1,340 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily CMoG Interpretive Label</title>
+<style>
+  :root {
+    --ink:      #000;
+    --ink-soft: #3a3a3a;
+    --paper:    #fff;
+  }
+
+  * { box-sizing: border-box; }
+  * { transition: none !important; animation: none !important; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;              /* one page, never scrolls */
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Georgia, "Noto Serif", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    display: flex;
+    justify-content: center;
+    padding: 4vh 5vw;
+  }
+
+  main {
+    width: 100%;
+    max-width: 60rem;
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- Everything below is in rem, so scaling the root scales the lot ---- */
+
+  .area {
+    font-size: 0.9rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 2.5rem 0;
+  }
+
+  h1 {
+    font-size: 2.8rem;
+    line-height: 1.15;
+    font-weight: normal;
+    font-style: italic;
+    margin: 0 0 1.1rem 0;
+  }
+
+  .tombstone {
+    font-size: 1.1rem;
+    line-height: 1.65;
+    color: var(--ink-soft);
+    margin: 0 0 1.8rem 0;
+  }
+  .tombstone .maker {
+    color: var(--ink);
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+    font-size: 1.25rem;
+  }
+  .tombstone div { margin-top: 0.1rem; }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--ink);
+    margin: 0 0 1.8rem 0;
+    width: 100%;
+  }
+
+  .label {
+    font-size: 1.6rem;
+    line-height: 1.6;
+    margin: 0;
+    max-width: 34em;
+  }
+
+  footer {
+    margin-top: auto;
+    padding-top: 2rem;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    display: flex;
+    justify-content: space-between;
+    gap: 2rem;
+  }
+  footer .accession { letter-spacing: 0.05em; }
+
+  .message {
+    font-size: 1.2rem;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin: auto 0;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<main id="root">
+  <p class="message">Loading&hellip;</p>
+</main>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+
+var CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJg7tG8-A64uJS8B1NO18BDy63lncDfqsGcy7ABosAnNZduhaNeciD2zL6X57LL4ZXSxaTQwh9K9Ae/pub?gid=0&single=true&output=csv";
+
+var POLL_SECONDS = 300;
+
+// Auto-fit bounds, in px, for the root font size.
+// Everything on the page is sized in rem relative to this.
+var MIN_ROOT_PX = 9;    // floor: below this, stop shrinking and let it clip
+var MAX_ROOT_PX = 30;   // ceiling: stops short labels ballooning absurdly
+
+
+/* ============================================================
+   AUTO-FIT
+   ============================================================ */
+
+// Binary search for the largest root font size whose content still fits
+// the viewport. About eight iterations, imperceptible on any device.
+function fitToScreen() {
+  var root = document.documentElement;
+  var main = document.getElementById("root");
+
+  var lo = MIN_ROOT_PX;
+  var hi = MAX_ROOT_PX;
+  var best = MIN_ROOT_PX;
+
+  for (var i = 0; i < 9; i++) {
+    var mid = (lo + hi) / 2;
+    root.style.fontSize = mid + "px";
+
+    // Force layout, then ask whether the content overflows its box.
+    var overflows = main.scrollHeight > main.clientHeight + 1;
+
+    if (overflows) {
+      hi = mid;
+    } else {
+      best = mid;
+      lo = mid;
+    }
+  }
+
+  root.style.fontSize = best + "px";
+}
+
+
+/* ============================================================
+   CSV parsing — quote-aware, since label text contains commas
+   ============================================================ */
+
+function parseCSV(text) {
+  var rows = [], row = [], field = "", inQuotes = false;
+
+  for (var i = 0; i < text.length; i++) {
+    var c = text.charAt(i);
+
+    if (inQuotes) {
+      if (c === '"') {
+        if (text.charAt(i + 1) === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field); field = "";
+    } else if (c === "\n") {
+      row.push(field); field = "";
+      rows.push(row); row = [];
+    } else if (c !== "\r") {
+      field += c;
+    }
+  }
+  row.push(field);
+
+  var nonEmpty = false;
+  for (var j = 0; j < row.length; j++) {
+    if (row[j].replace(/\s/g, "") !== "") { nonEmpty = true; break; }
+  }
+  if (nonEmpty) rows.push(row);
+
+  return rows;
+}
+
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+
+var FIELDS = ["date", "object_number", "title", "maker", "object_date",
+              "place", "technique", "label", "url", "collection_area"];
+
+function toRecord(row) {
+  var r = {};
+  for (var i = 0; i < FIELDS.length; i++) {
+    r[FIELDS[i]] = (row[i] || "").replace(/^\s+|\s+$/g, "");
+  }
+  return r;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// Treat a lone em dash as "not stated" — see the Step 7b placeholder note.
+function present(v) {
+  return v && v !== "\u2014" && v !== "-";
+}
+
+function render(rec) {
+  var parts = [];
+
+  if (present(rec.collection_area)) {
+    parts.push('<p class="area">' + esc(rec.collection_area) + "</p>");
+  }
+
+  parts.push("<h1>" + esc(rec.title || "Untitled") + "</h1>");
+
+  parts.push('<div class="tombstone">');
+  if (present(rec.maker)) {
+    parts.push('<div class="maker">' + esc(rec.maker) + "</div>");
+  }
+  var line = [];
+  if (present(rec.object_date)) line.push(rec.object_date);
+  if (present(rec.place)) line.push(rec.place);
+  if (line.length) parts.push("<div>" + esc(line.join(", ")) + "</div>");
+  if (present(rec.technique)) {
+    parts.push("<div>" + esc(rec.technique) + "</div>");
+  }
+  parts.push("</div>");
+
+  parts.push("<hr>");
+  parts.push('<p class="label">' + esc(rec.label) + "</p>");
+
+  parts.push("<footer>");
+  if (present(rec.object_number)) {
+    parts.push('<span class="accession">' + esc(rec.object_number) + "</span>");
+  }
+  if (present(rec.date)) parts.push("<span>" + esc(rec.date) + "</span>");
+  parts.push("</footer>");
+
+  document.getElementById("root").innerHTML = parts.join("");
+  fitToScreen();
+}
+
+function showMessage(text) {
+  document.documentElement.style.fontSize = "16px";
+  document.getElementById("root").innerHTML =
+    '<p class="message">' + esc(text) + "</p>";
+}
+
+
+/* ============================================================
+   Polling
+   ============================================================ */
+
+var currentKey = null;
+var lastGood = null;
+
+function check() {
+  if (CSV_URL.indexOf("PASTE_") === 0) {
+    showMessage("Set CSV_URL at the top of the script block.");
+    return;
+  }
+
+  fetch(CSV_URL + "&_=" + Date.now(), { cache: "no-store" })
+    .then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.text();
+    })
+    .then(function (text) {
+      var rows = parseCSV(text);
+
+      var data = [];
+      for (var i = 1; i < rows.length; i++) {
+        if ((rows[i][7] || "").replace(/\s/g, "") !== "") data.push(rows[i]);
+      }
+
+      if (!data.length) {
+        if (!lastGood) showMessage("No labels in the sheet yet.");
+        return;
+      }
+
+      var rec = toRecord(data[data.length - 1]);
+      var key = rec.date + "|" + rec.object_number;
+
+      if (key !== currentKey) {
+        render(rec);
+        currentKey = key;
+        lastGood = rec;
+      }
+    })
+    .catch(function (err) {
+      if (!lastGood) showMessage("Could not reach the sheet. Retrying\u2026");
+      if (window.console) console.error(err);
+    });
+}
+
+check();
+setInterval(check, POLL_SECONDS * 1000);
+
+// Re-fit when the viewport changes shape.
+var resizeTimer = null;
+function onResize() {
+  if (resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function () {
+    if (lastGood) fitToScreen();
+  }, 250);
+}
+window.addEventListener("resize", onResize);
+window.addEventListener("orientationchange", onResize);
+
+// Tap to force a re-check.
+document.addEventListener("click", function () {
+  currentKey = null;
+  check();
+});
+</script>
+</body>
+</html>
