@@ -1,0 +1,285 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily CMoG Interpretive Label</title>
+<style>
+  /* ---- Grayscale palette. No mid-tones: they go muddy on e-ink. ---- */
+  :root {
+    --ink:        #000;
+    --ink-soft:   #3a3a3a;
+    --paper:      #fff;
+    --rule:       #000;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    /* Android/Boox ships Noto Serif; Georgia is the desktop fallback. */
+    font-family: Georgia, "Noto Serif", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* No transitions or animations anywhere — every repaint costs a flash. */
+  * { transition: none !important; animation: none !important; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 5vh 5vw;
+  }
+
+  main {
+    width: 100%;
+    max-width: 60rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- Type scale. Sized for arm's-length reading at ~300ppi. ---- */
+
+  .area {
+    font-size: 0.95rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 3.5rem;
+  }
+
+  h1 {
+    font-size: 3rem;
+    line-height: 1.15;
+    font-weight: normal;
+    font-style: italic;
+    margin: 0 0 1.25rem 0;
+    text-wrap: balance;
+  }
+
+  .tombstone {
+    font-size: 1.15rem;
+    line-height: 1.7;
+    color: var(--ink-soft);
+    margin: 0 0 2.5rem 0;
+  }
+  .tombstone .maker {
+    color: var(--ink);
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+    font-size: 1.3rem;
+  }
+  .tombstone div { margin-top: 0.15rem; }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--rule);
+    margin: 0 0 2.5rem 0;
+    width: 100%;
+  }
+
+  .label {
+    font-size: 1.65rem;
+    line-height: 1.62;
+    margin: 0;
+    /* Slightly loose measure; e-ink rewards air. */
+    max-width: 34em;
+    hyphens: auto;
+  }
+
+  footer {
+    margin-top: auto;
+    padding-top: 3rem;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    display: flex;
+    justify-content: space-between;
+    gap: 2rem;
+  }
+  footer .accession { letter-spacing: 0.05em; }
+
+  .message {
+    font-size: 1.3rem;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin: auto 0;
+    text-align: center;
+  }
+
+  /* Landscape: shorter measure, tighter vertical rhythm. */
+  @media (orientation: landscape) {
+    body { padding: 6vh 8vw; }
+    h1 { font-size: 2.6rem; }
+    .area { margin-bottom: 2.5rem; }
+  }
+</style>
+</head>
+<body>
+<main id="root">
+  <p class="message">Loading&hellip;</p>
+</main>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+
+// Paste your published-to-web CSV URL here.
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJg7tG8-A64uJS8B1NO18BDy63lncDfqsGcy7ABosAnNZduhaNeciD2zL6X57LL4ZXSxaTQwh9K9Ae/pub?gid=0&single=true&output=csv";
+
+// How often to check for a new row, in seconds.
+const POLL_SECONDS = 60;
+
+/* ============================================================
+   CSV parsing — quote-aware, since label text contains commas.
+   ============================================================ */
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field); field = "";
+    } else if (c === "\n") {
+      row.push(field); field = "";
+      rows.push(row); row = [];
+    } else if (c !== "\r") {
+      field += c;
+    }
+  }
+  row.push(field);
+  if (row.some(f => f.trim() !== "")) rows.push(row);
+  return rows;
+}
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+
+const FIELDS = ["date", "object_number", "title", "maker", "object_date",
+                "place", "technique", "label", "url", "collection_area"];
+
+function toRecord(row) {
+  const r = {};
+  FIELDS.forEach((name, i) => { r[name] = (row[i] || "").trim(); });
+  return r;
+}
+
+function esc(s) {
+  return s.replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Join the parts of the tombstone that actually exist.
+function tombstoneLine(rec) {
+  return [rec.object_date, rec.place].filter(Boolean).join(", ");
+}
+
+function render(rec) {
+  const parts = [];
+
+  if (rec.collection_area) {
+    parts.push(`<p class="area">${esc(rec.collection_area)}</p>`);
+  }
+
+  parts.push(`<h1>${esc(rec.title || "Untitled")}</h1>`);
+
+  parts.push('<div class="tombstone">');
+  if (rec.maker) parts.push(`<div class="maker">${esc(rec.maker)}</div>`);
+  const line = tombstoneLine(rec);
+  if (line) parts.push(`<div>${esc(line)}</div>`);
+  if (rec.technique) parts.push(`<div>${esc(rec.technique)}</div>`);
+  parts.push("</div>");
+
+  parts.push("<hr>");
+
+  parts.push(`<p class="label">${esc(rec.label)}</p>`);
+
+  parts.push("<footer>");
+  if (rec.object_number) {
+    parts.push(`<span class="accession">${esc(rec.object_number)}</span>`);
+  }
+  if (rec.date) parts.push(`<span>${esc(rec.date)}</span>`);
+  parts.push("</footer>");
+
+  document.getElementById("root").innerHTML = parts.join("");
+}
+
+function showMessage(text) {
+  document.getElementById("root").innerHTML =
+    `<p class="message">${esc(text)}</p>`;
+}
+
+/* ============================================================
+   Polling
+   ============================================================ */
+
+// Tracks what's currently painted. We only touch the DOM when this
+// changes — otherwise the screen flashes every minute for nothing.
+let currentKey = null;
+
+// Last successful record, so a network blip never blanks the display.
+let lastGood = null;
+
+async function check() {
+  if (CSV_URL.startsWith("PASTE_")) {
+    showMessage("Set CSV_URL at the top of this file to your published Sheet URL.");
+    return;
+  }
+
+  try {
+    // Cache-bust: Google caches published CSV aggressively.
+    const res = await fetch(CSV_URL + "&_=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const rows = parseCSV(await res.text());
+
+    // Drop the header, then take the last row with a label in it.
+    const data = rows.slice(1).filter(r => (r[7] || "").trim() !== "");
+    if (!data.length) {
+      if (!lastGood) showMessage("No labels in the sheet yet.");
+      return;
+    }
+
+    const rec = toRecord(data[data.length - 1]);
+    const key = rec.date + "|" + rec.object_number;
+
+    if (key !== currentKey) {
+      render(rec);
+      currentKey = key;
+      lastGood = rec;
+    }
+
+  } catch (err) {
+    // Keep showing the last good label rather than an error screen.
+    if (!lastGood) showMessage("Could not reach the sheet. Retrying\u2026");
+    console.error(err);
+  }
+}
+
+check();
+setInterval(check, POLL_SECONDS * 1000);
+
+// Tap anywhere to force a re-check.
+document.addEventListener("click", () => { currentKey = null; check(); });
+</script>
+</body>
+</html>
