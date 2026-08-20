@@ -123,6 +123,7 @@
     justify-content: space-between;
     gap: 2rem;
   }
+  
   footer .accession { letter-spacing: 0.05em; }
 
     footer .toggle {
@@ -194,7 +195,7 @@ function fitToScreen() {
     var mid = (lo + hi) / 2;
     root.style.fontSize = mid + "px";
 
-    if (main.scrollHeight > main.clientHeight + 1) {
+    if (main.scrollHeight > main.clientHeight - 4) {
       hi = mid;
     } else {
       best = mid;
@@ -202,7 +203,13 @@ function fitToScreen() {
     }
   }
 
-  root.style.fontSize = best + "px";
+  // Layout can settle slightly larger than measured. Step down until it fits.
+  var guard = 0;
+  while (main.scrollHeight > main.clientHeight && best > MIN_ROOT_PX && guard < 20) {
+    best = best * 0.98;
+    root.style.fontSize = best + "px";
+    guard++;
+  }
 }
 
 // Drop the image band entirely and re-fit the text into the full height.
@@ -324,7 +331,7 @@ function render(rec) {
 
   if (hasShort) {
     parts.push('<span class="toggle" id="version-toggle">' +
-      (showShort ? "75" : "150") + "</span>");
+      (showShort ? "150 words" : "75 words") + "</span>");
   }
   
   parts.push("<footer>");
