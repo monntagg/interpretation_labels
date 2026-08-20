@@ -125,6 +125,12 @@
   }
   footer .accession { letter-spacing: 0.05em; }
 
+  footer a.accession {
+    color: var(--ink-soft);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ink-soft);
+  }
+
   .message {
     font-size: 1.2rem;
     line-height: 1.6;
@@ -311,7 +317,9 @@ function render(rec) {
 
   parts.push("<footer>");
   if (present(rec.object_number)) {
-    parts.push('<span class="accession">' + esc(rec.object_number) + "</span>");
+    parts.push(present(rec.url)
+      ? '<a class="accession" href="' + esc(rec.url) + '">' + esc(rec.object_number) + "</a>"
+      : '<span class="accession">' + esc(rec.object_number) + "</span>");
   }
   if (present(rec.date)) parts.push("<span>" + esc(rec.date) + "</span>");
   parts.push("</footer>");
