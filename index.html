@@ -355,10 +355,6 @@ function render(rec) {
   var body = (showShort && hasShort) ? rec.label_75 : rec.label;
   parts.push('<p class="label">' + esc(body) + "</p>");
 
-  if (hasShort) {
-    parts.push('<span class="toggle" id="version-toggle">' +
-      (showShort ? "150 words" : "75 words") + "</span>");
-  }
   
   parts.push("<footer>");
   if (present(rec.object_number)) {
