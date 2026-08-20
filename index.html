@@ -125,6 +125,12 @@
   }
   footer .accession { letter-spacing: 0.05em; }
 
+    footer .toggle {
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--ink-soft);
+    cursor: pointer;
+  }
+
   footer a.accession {
     color: var(--ink-soft);
     text-decoration: none;
@@ -256,7 +262,7 @@ function parseCSV(text) {
 // Column K (index 10) is new.
 var FIELDS = ["date", "object_number", "title", "maker", "object_date",
               "place", "technique", "label", "url", "collection_area",
-              "image_url"];
+              "image_url", "label_75"];
 
 function toRecord(row) {
   var r = {};
@@ -310,11 +316,17 @@ function render(rec) {
   if (present(rec.technique)) {
     parts.push("<div>" + esc(rec.technique) + "</div>");
   }
-  parts.push("</div>");
-
   parts.push("<hr>");
-  parts.push('<p class="label">' + esc(rec.label) + "</p>");
 
+  var hasShort = present(rec.label_75);
+  var body = (showShort && hasShort) ? rec.label_75 : rec.label;
+  parts.push('<p class="label">' + esc(body) + "</p>");
+
+  if (hasShort) {
+    parts.push('<span class="toggle" id="version-toggle">' +
+      (showShort ? "75" : "150") + "</span>");
+  }
+  
   parts.push("<footer>");
   if (present(rec.object_number)) {
     parts.push(present(rec.url)
@@ -377,6 +389,10 @@ function showMessage(text) {
 var currentKey = null;
 var lastGood = null;
 
+// Which label version to show. ?v=75 in the URL sets the short one as
+// this device's default; the footer toggle overrides per-viewing.
+var showShort = /[?&]v=75\b/.test(window.location.search);
+
 function check() {
   if (CSV_URL.indexOf("PASTE_") === 0) {
     showMessage("Set CSV_URL at the top of the script block.");
@@ -429,7 +445,12 @@ function onResize() {
 window.addEventListener("resize", onResize);
 window.addEventListener("orientationchange", onResize);
 
-document.addEventListener("click", function () {
+document.addEventListener("click", function (e) {
+  if (e.target && e.target.id === "version-toggle") {
+    showShort = !showShort;
+    if (lastGood) render(lastGood);
+    return;
+  }
   currentKey = null;
   check();
 });
