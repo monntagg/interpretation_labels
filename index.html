@@ -69,12 +69,30 @@
 
   /* ---- Text. All rem, so scaling the root scales the lot. ---- */
 
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 2rem;
+    margin: 0 0 2rem 0;
+  }
+
   .area {
     font-size: 0.9rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--ink-soft);
-    margin: 0 0 2rem 0;
+    margin: 0;
+  }
+
+  .toggle {
+    font-size: 0.9rem;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--ink-soft);
+    cursor: pointer;
+    white-space: nowrap;
+    flex: 0 0 auto;
   }
 
   h1 {
@@ -306,9 +324,16 @@ function render(rec) {
   }
   parts.push("</div>");
 
-  if (present(rec.collection_area)) {
-    parts.push('<p class="area">' + esc(rec.collection_area) + "</p>");
+  var hasShort = present(rec.label_75);
+  
+  parts.push('<div class="header-row">');
+  parts.push('<p class="area">' +
+    (present(rec.collection_area) ? esc(rec.collection_area) : "") + "</p>");
+  if (hasShort) {
+    parts.push('<span class="toggle" id="version-toggle">' +
+      (showShort ? "150 words" : "75 words") + "</span>");
   }
+  parts.push("</div>");
 
   parts.push("<h1>" + esc(rec.title || "Untitled") + "</h1>");
 
@@ -323,9 +348,10 @@ function render(rec) {
   if (present(rec.technique)) {
     parts.push("<div>" + esc(rec.technique) + "</div>");
   }
+  
   parts.push("<hr>");
 
-  var hasShort = present(rec.label_75);
+
   var body = (showShort && hasShort) ? rec.label_75 : rec.label;
   parts.push('<p class="label">' + esc(body) + "</p>");
 
